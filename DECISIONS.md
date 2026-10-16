@@ -20,9 +20,10 @@
   does not include authentication, a UI, billing, distributed worker
   coordination, or production deployment.
 - **Known limitations / next steps:**
-- `last_error` is overwritten with "Automatic retry window expired" when
-  retries stop, so the original cause (e.g. HTTP 500) is only in the logs.
-  Next: keep the last HTTP status/error separately.
-- Manual retry endpoint for failed events (not built yet).
-- Endpoint URL is copied onto each event at creation time; changing a
-  subscription's URL does not affect events already queued.
+  - `last_error` can be overwritten with "Automatic retry window expired"
+    when the retry sweep marks an event as failed, so the original cause
+    (e.g. HTTP 500) may only be in the logs. Next: store the last HTTP
+    status/error separately.
+  - Endpoint URL is copied onto each event at creation time; changing a
+    subscription's URL does not affect events already queued.
+  - All non-2xx responses are retried, including 4xx (e.g. 400, 410).
