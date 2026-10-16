@@ -1,0 +1,5 @@
+node_modules/
+.env
+webhooks.sqlite
+webhooks.sqlite-shm
+webhooks.sqlite-wal
