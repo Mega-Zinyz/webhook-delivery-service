@@ -78,31 +78,3 @@ automatic retry window have status `failed`; retry one with
 Deliveries are HTTP POST requests containing the original JSON payload and
 `Idempotency-Key`, `X-Webhook-Event-Id`, and `X-Webhook-Subscription-Id`
 headers.
-
-## Delivery decisions and trade-offs
-
-- **At-least-once delivery attempts, not exactly-once processing.** Events are
-  durably recorded before acceptance and retried after failures or process
-  restarts. If the endpoint accepts a request but the service times out or
-  stops before recording success, the same event can be delivered again.
-  Exactly-once effects cannot be guaranteed across the HTTP/SQLite boundary.
-  Consumers should deduplicate using the stable event ID in the
-  `Idempotency-Key` header.
-- **Exponential retry with jitter.** The first retry is about one second after
-  failure, the delay grows exponentially and is capped at five minutes, with
-  jitter to reduce synchronized retry bursts. Each request times out after
-  five seconds.
-- **Bounded automatic retries.** Retries continue for 24 hours from the first
-  attempt. An event still failing after that window becomes `failed` and is
-  retained for inspection and manual retry; retrying it starts a new window.
-  This bounds indefinite automatic work without discarding the event.
-- **Customer isolation and ordering.** At most one delivery per subscription
-  runs at a time, and its events are sent in enqueue order. A failed event
-  blocks later events for that subscription until it is delivered (including
-  after manual retry), preserving order at the cost of head-of-line blocking
-  for that customer. Other subscriptions can use the remaining concurrency
-  slots (up to ten).
-- **Single-process scope.** SQLite and in-process scheduling keep this service
-  simple and durable on one host. The scheduler is not a distributed worker
-  system; horizontal scaling would require shared atomic claims/leases and
-  per-subscription coordination.
