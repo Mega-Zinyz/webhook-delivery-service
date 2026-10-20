@@ -1,9 +1,10 @@
 const express = require('express');
 const { database } = require('../config/sqlite-database');
+const { validateWebhookUrl } = require('../utils/webhookUrl');
 
 const router = express.Router();
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     return res.status(400).json({ error: 'Request body must be a JSON object' });
   }
@@ -18,13 +19,9 @@ router.post('/', (req, res) => {
 
   let parsedUrl;
   try {
-    parsedUrl = new URL(endpointUrl);
-  } catch {
-    return res.status(400).json({ error: 'endpointUrl must be a valid HTTP or HTTPS URL' });
-  }
-
-  if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
-    return res.status(400).json({ error: 'endpointUrl must be a valid HTTP or HTTPS URL without credentials' });
+    parsedUrl = await validateWebhookUrl(endpointUrl);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 
   const normalizedSubscriptionId = subscriptionId.trim();

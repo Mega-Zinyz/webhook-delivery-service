@@ -5,7 +5,8 @@
   "description": "Durable HTTP webhook delivery service",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=22.13.0"

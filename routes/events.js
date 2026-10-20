@@ -18,6 +18,12 @@ router.post('/', (req, res) => {
   }
 
   const normalizedSubscriptionId = subscriptionId.trim();
+  const suppliedIdempotencyKey = req.get('Idempotency-Key');
+  const idempotencyKey = suppliedIdempotencyKey === undefined ? null : suppliedIdempotencyKey.trim();
+  if (idempotencyKey !== null && (idempotencyKey.length === 0 || idempotencyKey.length > 200)) {
+    return res.status(400).json({ error: 'Idempotency-Key must contain between 1 and 200 characters' });
+  }
+
   const subscription = database.prepare(`
     SELECT endpoint_url FROM subscriptions WHERE id = ?
   `).get(normalizedSubscriptionId);
@@ -25,23 +31,54 @@ router.post('/', (req, res) => {
     return res.status(404).json({ error: 'Subscription not found' });
   }
 
+  if (idempotencyKey !== null) {
+    const existingEvent = database.prepare(`
+      SELECT id, status FROM events WHERE subscription_id = ? AND idempotency_key = ?
+    `).get(normalizedSubscriptionId, idempotencyKey);
+    if (existingEvent) {
+      return res.status(202).json({
+        eventId: existingEvent.id,
+        status: existingEvent.status === 'delivering' ? 'pending' : existingEvent.status,
+        deduplicated: true,
+      });
+    }
+  }
+
   const id = crypto.randomUUID();
   const now = Date.now();
   database.prepare(`
     INSERT INTO events (
-      id, subscription_id, endpoint_url, payload, status, next_attempt_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+      id, subscription_id, endpoint_url, payload, status, next_attempt_at, idempotency_key,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
   `).run(
     id,
     normalizedSubscriptionId,
     subscription.endpoint_url,
     JSON.stringify(req.body.payload),
     now,
+    idempotencyKey,
     now,
     now,
   );
 
-  res.status(202).json({ eventId: id, status: 'pending' });
+  res.status(202).json({ eventId: id, status: 'pending', deduplicated: false });
+});
+
+router.get('/:eventId/attempts', (req, res) => {
+  const exists = database.prepare('SELECT 1 AS found FROM events WHERE id = ?').get(req.params.eventId);
+  if (!exists) {
+    return res.status(404).json({ error: 'Event not found' });
+  }
+
+  const attempts = database.prepare(`
+    SELECT attempt_number AS attemptNumber, started_at AS startedAt,
+      completed_at AS completedAt, http_status AS httpStatus, error, retry_after_ms AS retryAfterMs
+    FROM delivery_attempts
+    WHERE event_id = ?
+    ORDER BY attempt_number
+  `).all(req.params.eventId);
+  res.status(200).json({ eventId: req.params.eventId, attempts });
 });
 
 router.get('/:eventId', (req, res) => {
